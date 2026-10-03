@@ -1,0 +1,68 @@
+name: Crea APK Android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+
+      - name: Prepara il progetto
+        run: |
+          mkdir -p build/www build/assets
+          cp Ascesa.html build/www/index.html
+          cd build
+          cat > package.json <<'JSON'
+          {"name":"ascesa","version":"1.0.0","private":true,
+           "dependencies":{"@capacitor/android":"^7.0.0","@capacitor/core":"^7.0.0"},
+           "devDependencies":{"@capacitor/assets":"^3.0.5","@capacitor/cli":"^7.0.0"}}
+          JSON
+          cat > capacitor.config.json <<'JSON'
+          {"appId":"com.walter.ascesa","appName":"Ascesa","webDir":"www","android":{"backgroundColor":"#1A2547"}}
+          JSON
+          npm install
+
+      - name: Icona e schermata iniziale
+        working-directory: build
+        run: |
+          cat > icons.js <<'JS'
+          const sharp = require("sharp");
+          const M = '<path d="M4 34 L16 12 L22 22 L27 15 L36 34 Z" fill="#7D8CFF"/><path d="M16 12 L19.5 18.4 L16.8 17 L14.2 19 Z" fill="#fff" opacity=".9"/><circle cx="29" cy="9" r="3" fill="#E3A32B"/>';
+          const svg = (bg, t, s) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">${bg ? '<rect width="1024" height="1024" fill="#1A2547"/>' : ''}<g transform="translate(${t},${t}) scale(${s})">${M}</g></svg>`);
+          (async () => {
+            await sharp(svg(true, 192, 16)).png().toFile("assets/icon-only.png");
+            await sharp(svg(false, 272, 12)).png().toFile("assets/icon-foreground.png");
+            await sharp({create:{width:1024,height:1024,channels:4,background:"#1A2547"}}).png().toFile("assets/icon-background.png");
+            const fg = await sharp(svg(false, 272, 12)).resize(1000, 1000).png().toBuffer();
+            for (const f of ["splash.png", "splash-dark.png"])
+              await sharp({create:{width:2732,height:2732,channels:4,background:"#1A2547"}}).composite([{input:fg,gravity:"center"}]).png().toFile("assets/" + f);
+          })();
+          JS
+          node icons.js
+          npx cap add android
+          npx capacitor-assets generate --android
+          npx cap sync android
+
+      - name: Compila APK
+        working-directory: build/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../../Ascesa.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ascesa-APK
+          path: Ascesa.apk
