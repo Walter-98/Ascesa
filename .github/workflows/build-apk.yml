@@ -27,6 +27,7 @@ jobs:
         run: |
           mkdir -p build/www build/assets
           cp Ascesa.html build/www/index.html
+          if [ -d manuali ]; then cp -r manuali build/www/; fi
           cd build
           cat > package.json <<'JSON'
           {"name":"ascesa","version":"1.0.0","private":true,
